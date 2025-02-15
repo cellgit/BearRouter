@@ -8,11 +8,13 @@
 import SwiftUI
 
 /// 路由目标协议，每个路由枚举都需要实现 `Hashable, Identifiable`
+@available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 public protocol RouteProtocol: Hashable, Identifiable {
     var id: String { get }
 }
 
 // 通用路由器协议，用于对外统一各个路由器的行为
+@available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 public protocol RouterProtocol: ObservableObject {
     associatedtype RouteType: RouteProtocol
     

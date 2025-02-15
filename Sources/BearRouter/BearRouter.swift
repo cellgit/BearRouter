@@ -27,6 +27,7 @@ import SwiftUI
 
 
 // 应用路由的实现
+@available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 open class BearRouter<RouteType: RouteProtocol>: RouterProtocol {
     
 //    public typealias RouteType = RouteType
@@ -79,7 +80,7 @@ open class BearRouter<RouteType: RouteProtocol>: RouterProtocol {
     }
 }
 
-
+@available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 public extension BearRouter {
     
     func push(_ route: RouteType, completion: ((Any?) -> Void)?) {
