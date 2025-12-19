@@ -1,28 +1,44 @@
-// swift-tools-version:5.7
+// swift-tools-version:5.9
 import PackageDescription
 
 let package = Package(
     name: "BearRouter",
     platforms: [
-        .iOS(.v13),
-        .macOS(.v10_14)
+        .iOS(.v17),
+        .macOS(.v14)
     ],
     products: [
-        .library(
-            name: "BearRouter",
-            targets: ["BearRouter"]
-        )
-    ],
-    dependencies: [
-//        .package(url: "https://github.com/Alamofire/Alamofire.git", from: "5.6.4")
+        .library(name: "BearRouterCore", targets: ["BearRouterCore"]),
+        .library(name: "BearRouter", targets: ["BearRouter"]),
+        .library(name: "BearRouterOS26", targets: ["BearRouterOS26"]),
+        .library(name: "BearRouterTesting", targets: ["BearRouterTesting"])
     ],
     targets: [
         .target(
-            name: "BearRouter"
-//            dependencies: ["Alamofire"]
+            name: "BearRouterCore",
+            dependencies: []
+        ),
+        .target(
+            name: "BearRouter",
+            dependencies: ["BearRouterCore"]
+        ),
+        .target(
+            name: "BearRouterOS26",
+            dependencies: ["BearRouter"]
+        ),
+        .target(
+            name: "BearRouterTesting",
+            dependencies: ["BearRouterCore"]
         ),
         .testTarget(
-            name: "BearRouterTests",
+            name: "BearRouterCoreTests",
+            dependencies: [
+                "BearRouterCore",
+                "BearRouterTesting"
+            ]
+        ),
+        .testTarget(
+            name: "BearRouterSwiftUITests",
             dependencies: ["BearRouter"]
         )
     ]
