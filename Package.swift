@@ -1,16 +1,18 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.0
 import PackageDescription
 
 let package = Package(
     name: "BearRouter",
     platforms: [
-        .iOS(.v17),
-        .macOS(.v14)
+        .iOS(.v18),
+        .macOS(.v15),
+        .tvOS(.v18),
+        .watchOS(.v11),
+        .visionOS(.v2)
     ],
     products: [
         .library(name: "BearRouterCore", targets: ["BearRouterCore"]),
         .library(name: "BearRouter", targets: ["BearRouter"]),
-        .library(name: "BearRouterOS26", targets: ["BearRouterOS26"]),
         .library(name: "BearRouterTesting", targets: ["BearRouterTesting"])
     ],
     targets: [
@@ -21,10 +23,6 @@ let package = Package(
         .target(
             name: "BearRouter",
             dependencies: ["BearRouterCore"]
-        ),
-        .target(
-            name: "BearRouterOS26",
-            dependencies: ["BearRouter"]
         ),
         .target(
             name: "BearRouterTesting",

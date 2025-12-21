@@ -197,6 +197,7 @@ public struct TabNavigationHost<TabID: Hashable & Sendable, Route: Hashable & Se
     }
 }
 
+#if os(iOS) || os(macOS) || os(visionOS)
 public struct SplitNavigationHost<Selection: Hashable & Sendable, Route: Hashable & Sendable, Sidebar: View, Detail: View>: View {
     @ObservedObject private var navigator: SplitNavigator<Selection, Route>
     private let registry: DestinationRegistry<Route>
@@ -262,7 +263,9 @@ public struct SplitNavigationHost<Selection: Hashable & Sendable, Route: Hashabl
         )
     }
 }
+#endif
 
+@MainActor
 public func withNavigationPath<Route, Root>(navigator: Navigator<Route>, registry: DestinationRegistry<Route>, adapter: NavigationPathAdapter<Route> = .hashable, @ViewBuilder root: @escaping () -> Root) -> some View where Route: Hashable & Sendable, Root: View {
     PathStackNavigationHost(navigator: navigator, registry: registry, adapter: adapter, root: root)
 }

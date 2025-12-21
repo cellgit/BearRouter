@@ -5,13 +5,13 @@ import BearRouterCore
 public protocol IntentRouterProtocol<Intent, Route> {
     associatedtype Intent
     associatedtype Route: Hashable & Sendable
-    @Sendable func route(_ intent: Intent) -> [NavigationAction<Route>]
+    func route(_ intent: Intent) -> [NavigationAction<Route>]
 }
 
 public struct AnyIntentRouter<Intent, Route: Hashable & Sendable>: IntentRouterProtocol {
-    private let handler: @Sendable (Intent) -> [NavigationAction<Route>]
+    private let handler: (Intent) -> [NavigationAction<Route>]
 
-    public init(_ handler: @escaping @Sendable (Intent) -> [NavigationAction<Route>]) {
+    public init(_ handler: @escaping (Intent) -> [NavigationAction<Route>]) {
         self.handler = handler
     }
 
@@ -24,11 +24,11 @@ public struct AnyIntentRouter<Intent, Route: Hashable & Sendable>: IntentRouterP
     }
 }
 
-public struct IntentDispatcher<Intent>: Sendable {
-    private let asyncHandler: @Sendable (Intent) async -> Void
-    private let syncHandler: @Sendable (Intent) -> Void
+public struct IntentDispatcher<Intent>: @unchecked Sendable {
+    private let asyncHandler: (Intent) async -> Void
+    private let syncHandler: (Intent) -> Void
 
-    public init(async: @escaping @Sendable (Intent) async -> Void, sync: @escaping @Sendable (Intent) -> Void = { _ in }) {
+    public init(async: @escaping (Intent) async -> Void, sync: @escaping (Intent) -> Void = { _ in }) {
         self.asyncHandler = async
         self.syncHandler = sync
     }
@@ -42,11 +42,11 @@ public struct IntentDispatcher<Intent>: Sendable {
     }
 }
 
-public struct AnyIntentDispatcher: Sendable {
-    private let asyncHandler: @Sendable (Any) async -> Void
-    private let syncHandler: @Sendable (Any) -> Void
+public struct AnyIntentDispatcher: @unchecked Sendable {
+    private let asyncHandler: (Any) async -> Void
+    private let syncHandler: (Any) -> Void
 
-    public init(async: @escaping @Sendable (Any) async -> Void, sync: @escaping @Sendable (Any) -> Void = { _ in }) {
+    public init(async: @escaping (Any) async -> Void, sync: @escaping (Any) -> Void = { _ in }) {
         self.asyncHandler = async
         self.syncHandler = sync
     }
@@ -78,6 +78,7 @@ public struct AnyIntentDispatcher: Sendable {
     }
 }
 
+@MainActor
 public struct BearRouterigator<Intent, Route: Hashable & Sendable> {
     @MainActor public let navigator: Navigator<Route>
     private let router: AnyIntentRouter<Intent, Route>
@@ -101,17 +102,24 @@ public struct BearRouterigator<Intent, Route: Hashable & Sendable> {
     }
 
     public func sendSync(_ intent: Intent) {
-        Task { await send(intent) }
+        Task { @MainActor in
+            await send(intent)
+        }
     }
 
     public func makeDispatcher() -> IntentDispatcher<Intent> {
         IntentDispatcher(
             async: { intent in await send(intent) },
-            sync: { intent in Task { await send(intent) } }
+            sync: { intent in
+                Task { @MainActor in
+                    await send(intent)
+                }
+            }
         )
     }
 }
 
+@MainActor
 public struct TabBearRouterigator<Intent, TabID: Hashable & Sendable, Route: Hashable & Sendable> {
     @MainActor public let navigator: TabNavigator<TabID, Route>
     private let router: AnyIntentRouter<Intent, Route>
@@ -136,17 +144,24 @@ public struct TabBearRouterigator<Intent, TabID: Hashable & Sendable, Route: Has
     }
 
     public func sendSync(_ intent: Intent, tabID: TabID? = nil) {
-        Task { await send(intent, tabID: tabID) }
+        Task { @MainActor in
+            await send(intent, tabID: tabID)
+        }
     }
 
     public func makeDispatcher(defaultTab: TabID? = nil) -> IntentDispatcher<Intent> {
         IntentDispatcher(
             async: { intent in await send(intent, tabID: defaultTab) },
-            sync: { intent in Task { await send(intent, tabID: defaultTab) } }
+            sync: { intent in
+                Task { @MainActor in
+                    await send(intent, tabID: defaultTab)
+                }
+            }
         )
     }
 }
 
+@MainActor
 public struct SplitBearRouterigator<Intent, Selection: Hashable & Sendable, Route: Hashable & Sendable> {
     @MainActor public let navigator: SplitNavigator<Selection, Route>
     private let router: AnyIntentRouter<Intent, Route>
@@ -170,13 +185,19 @@ public struct SplitBearRouterigator<Intent, Selection: Hashable & Sendable, Rout
     }
 
     public func sendSync(_ intent: Intent) {
-        Task { await send(intent) }
+        Task { @MainActor in
+            await send(intent)
+        }
     }
 
     public func makeDispatcher() -> IntentDispatcher<Intent> {
         IntentDispatcher(
             async: { intent in await send(intent) },
-            sync: { intent in Task { await send(intent) } }
+            sync: { intent in
+                Task { @MainActor in
+                    await send(intent)
+                }
+            }
         )
     }
 }

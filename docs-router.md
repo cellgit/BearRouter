@@ -1,6 +1,6 @@
 # BearRouter 设计文档 & 生成提示词（低学习成本版）
 
-目标：输出一个“拿来就用”的 SwiftUI 导航库（BearRouterCore + BearRouter + 可选 OS26/Testing），默认强类型、安全，同时兼顾旧项目迁移的低心智负担。
+目标：输出一个“拿来就用”的 SwiftUI 导航库（BearRouterCore + BearRouter + Testing），默认强类型、安全，同时兼顾旧项目迁移的低心智负担。
 
 ---
 
@@ -26,9 +26,7 @@
    - 意图：`IntentRouterProtocol`、`BearRouterigator/TabBearRouterigator/SplitBearRouterigator`、`IntentDispatcher`/`AnyIntentDispatcher`
    - **NavigationPath 适配层**：`NavigationPathAdapter<Route>`、`PathStackNavigationHost`、`withNavigationPath`
    - 便捷：同步/异步 Intent 发送（sync 仅测试/调试）
-3) **BearRouterOS26**（可选）
-   - OS 26+ 的过渡增强宿主（`#available` 包裹）
-4) **BearRouterTesting**（可选）
+3) **BearRouterTesting**（可选）
    - Mock Guard、内存持久化、便捷断言
 
 ## 核心模型/动作
@@ -51,7 +49,7 @@
 ## SwiftUI 宿主
 - `StackNavigationHost`：`NavigationStack` + `.navigationDestination`
 - `TabNavigationHost` + `NavigableTab`：每 Tab 独立 `NavigationStack`
-- `SplitNavigationHost`：`NavigationSplitView` + detail 栈
+- `SplitNavigationHost`：`NavigationSplitView` + detail 栈（仅 iOS/macOS/visionOS）
 - Modal：`sheet(item:)`（全平台）、`fullScreenCover`（iOS 等）
 
 ## NavigationPath 适配（优先无反射）
@@ -96,12 +94,12 @@ let dispatcher = BearRouter.makeDispatcher() // async
 ```
 
 ## 复刻/实现步骤（生产向）
-1) 建 SPM 包（BearRouterCore/SwiftUI/OS26/Testing）。
+1) 建 SPM 包（BearRouterCore/SwiftUI/Testing）。
 2) Core：状态/动作/Guard/Logger/Snapshot/Persistence + Navigator/Tab/Split，加入 sceneID 透传与兼容 tab/selection 适配。
 3) SwiftUI：Registry + Hosts（Stack/Tab/Split）+ Intent 层（async/sync）+ NavigationPathAdapter（无反射）。
 4) 文档与示例：最小 3 步用法 + 迁移指南（旧版 selectTab → TabActionTranslator 等）。
 5) 可选示例：Tab + Deep Link + Restore。
-6) 可选 OS26 增强；可选 Testing 工具。
+6) 可选 Testing 工具。
 
 ## Codex 提示词（新版，强调低心智负担）
 ```
@@ -114,7 +112,7 @@ let dispatcher = BearRouter.makeDispatcher() // async
 - SwiftUI：StackNavigationHost/TabNavigationHost/SplitNavigationHost + DestinationRegistry（含 fallback）；Modal 支持 sheet 和（iOS）fullScreenCover。
 - NavigationPathAdapter：encode/decode 基于 AnyHashable，无反射；PathStackNavigationHost/withNavigationPath 包装。
 - Intent 层：IntentRouterProtocol（@Sendable）、BearRouterigator/TabBearRouterigator/SplitBearRouterigator，支持 async/sync 发送；Environment 注入 dispatcher。
-- Targets：BearRouterCore、BearRouter、BearRouterOS26（可选增强）、BearRouterTesting（Mock Guard、内存持久化）；平台 iOS18+/macOS15+，OS26+ 增强 #available。
+- Targets：BearRouterCore、BearRouter、BearRouterTesting（Mock Guard、内存持久化）；平台 iOS18+/macOS15+/tvOS18+/watchOS11+/visionOS2+。
 - 产出完整源码 + README，全部 ASCII。
 ```
 

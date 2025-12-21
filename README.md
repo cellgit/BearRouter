@@ -1,6 +1,6 @@
 # BearRouter
 
-A low-boilerplate, strongly typed navigation toolkit for SwiftUI. BearRouter ships with a pure Swift core (state, actions, guard/logger, snapshots), SwiftUI hosts, an optional OS26 wrapper target, and testing helpers. Define your route, register destinations, pick a host (Stack/Tab/Split), and you are ready to navigate.
+A low-boilerplate, strongly typed navigation toolkit for SwiftUI. BearRouter ships with a pure Swift core (state, actions, guard/logger, snapshots), SwiftUI hosts, and testing helpers. Define your route, register destinations, pick a host (Stack/Tab/Split), and you are ready to navigate.
 
 ## Quick start (3 steps)
 ```swift
@@ -29,10 +29,13 @@ StackNavigationHost(navigator: navigator, registry: registry) {
 Task { await navigator.handle(.push(.detail(id: 42))) }
 ```
 
+## Platform support
+- iOS 18+, macOS 15+, tvOS 18+, watchOS 11+, visionOS 2+.
+- `SplitNavigationHost` is available on iOS/macOS/visionOS only.
+
 ## Targets
 - `BearRouterCore`: pure Swift state machines (`Navigator`, `TabNavigator`, `SplitNavigator`), actions, guard/logger, snapshots & persistence helpers.
 - `BearRouter`: SwiftUI integration (`DestinationRegistry`, stack/tab/split hosts, `NavigationPathAdapter`, intent dispatchers).
-- `BearRouterOS26`: optional wrappers with `@available` guards for newer OS APIs.
 - `BearRouterTesting`: mock guard/logger and in-memory persistence helpers.
 
 ## Core concepts
@@ -45,8 +48,8 @@ Task { await navigator.handle(.push(.detail(id: 42))) }
 ## SwiftUI hosts
 - `StackNavigationHost`: typed `[Route]` binding; modal via `sheet` and `fullScreenCover`.
 - `TabNavigationHost`: one `NavigationStack` per tab with its own modal state.
-- `SplitNavigationHost`: `NavigationSplitView` + detail stack.
-- `NavigationPathAdapter`: bridge strong routes to `NavigationPath` without reflection; use `PathStackNavigationHost` or `withNavigationPath` for `NavigationPath`-driven stacks.
+- `SplitNavigationHost`: `NavigationSplitView` + detail stack (iOS/macOS/visionOS only).
+- `NavigationPathAdapter`: bridge strong routes to `NavigationPath`; use `PathStackNavigationHost` or `withNavigationPath` for `NavigationPath`-driven stacks.
 
 ## Intent layer
 Transform app intents into navigation actions without leaking UI concerns:
@@ -66,6 +69,9 @@ let dispatcher = routerigator.makeDispatcher() // async send
 Inject into SwiftUI with `.intentDispatcher(AnyIntentDispatcher(dispatcher))` and read via `@Environment(\.intentDispatcher)`.
 
 ## Migration notes
+- `BearRouterOS26` was removed; use `StackNavigationHost`, `TabNavigationHost`, or `SplitNavigationHost` directly.
+- Minimum OS versions were raised to the latest platform baselines listed above.
+- `BearRouterigator`, `TabBearRouterigator`, and `SplitBearRouterigator` are `@MainActor`-isolated; call them on the main actor.
 - Keep routes/tab IDs/selection types `Hashable & Sendable`; add `Codable` if you need snapshots.
 - For legacy string-based tabs or split selection, use `SelectionTranslator.rawValue` (for `RawRepresentable<String>`) or custom parse/stringify closures.
 - Prefer setting a non-crashing fallback view in `DestinationRegistry`; switch to `fatalError` during development if you want strict registration.
