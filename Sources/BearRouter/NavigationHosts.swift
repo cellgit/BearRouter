@@ -26,33 +26,53 @@ private struct RouteItem<Route: Hashable & Sendable>: Identifiable, Equatable {
 /// }
 /// ```
 public struct StackNavigationHost<Route: Hashable & Sendable, Root: View, Destination: View>: View {
+    @Namespace private var transitionNamespace
     private var navigator: Navigator<Route>
     private let root: () -> Root
     private let destination: (Route) -> Destination
+    private let transitionStyle: ((Route) -> BearTransitionStyle)?
 
     public init(
         navigator: Navigator<Route>,
+        transitionStyle: ((Route) -> BearTransitionStyle)? = nil,
         @ViewBuilder root: @escaping () -> Root,
         @ViewBuilder destination: @escaping (Route) -> Destination
     ) {
         self.navigator = navigator
         self.root = root
         self.destination = destination
+        self.transitionStyle = transitionStyle
     }
 
     public var body: some View {
         NavigationStack(path: pathBinding()) {
             root()
+                .environment(\.bearTransitionNamespace, transitionNamespace)
                 .navigationDestination(for: Route.self) { route in
-                    destination(route)
+                    destinationWithTransition(route)
                 }
         }
         .sheet(item: sheetBinding()) { item in
-            destination(item.route)
+            destinationWithTransition(item.route)
         }
         .fullScreenCoverIfAvailable(item: fullScreenBinding()) { item in
-            destination(item.route)
+            destinationWithTransition(item.route)
         }
+    }
+
+    @ViewBuilder
+    private func destinationWithTransition(_ route: Route) -> some View {
+        #if !os(macOS)
+        switch transitionStyle?(route) ?? .automatic {
+        case .zoom:
+            destination(route)
+                .navigationTransition(.zoom(sourceID: route, in: transitionNamespace))
+        case .slide, .automatic:
+            destination(route)
+        }
+        #else
+        destination(route)
+        #endif
     }
 
     private func pathBinding() -> Binding<[Route]> {
@@ -87,11 +107,13 @@ public extension StackNavigationHost where Destination == AnyView {
     init(
         navigator: Navigator<Route>,
         registry: DestinationRegistry<Route>,
+        transitionStyle: ((Route) -> BearTransitionStyle)? = nil,
         @ViewBuilder root: @escaping () -> Root
     ) {
         self.navigator = navigator
         self.root = root
         self.destination = { route in registry.view(for: route) }
+        self.transitionStyle = transitionStyle
     }
 }
 
@@ -144,18 +166,22 @@ public struct NavigableTab<TabID: Hashable & Sendable, Label: View, Content: Vie
 /// Each tab gets its own `NavigationStack` with destinations resolved
 /// by the `destination` `@ViewBuilder` closure.
 public struct TabNavigationHost<TabID: Hashable & Sendable, Route: Hashable & Sendable, Destination: View>: View {
+    @Namespace private var transitionNamespace
     private var navigator: TabNavigator<TabID, Route>
     private let tabs: [AnyNavigableTab<TabID>]
     private let destination: (Route) -> Destination
+    private let transitionStyle: ((Route) -> BearTransitionStyle)?
 
     public init(
         navigator: TabNavigator<TabID, Route>,
         tabs: [AnyNavigableTab<TabID>],
+        transitionStyle: ((Route) -> BearTransitionStyle)? = nil,
         @ViewBuilder destination: @escaping (Route) -> Destination
     ) {
         self.navigator = navigator
         self.tabs = tabs
         self.destination = destination
+        self.transitionStyle = transitionStyle
         precondition(!tabs.isEmpty, "TabNavigationHost requires at least one tab")
         if navigator.state.selectedTab == nil, let first = tabs.first?.id {
             navigator.selectTab(first)
@@ -167,20 +193,36 @@ public struct TabNavigationHost<TabID: Hashable & Sendable, Route: Hashable & Se
             ForEach(tabs) { tab in
                 NavigationStack(path: pathBinding(for: tab.id)) {
                     tab.content()
+                        .environment(\.bearTransitionNamespace, transitionNamespace)
                         .navigationDestination(for: Route.self) { route in
-                            destination(route)
+                            destinationWithTransition(route)
                         }
                 }
                 .tabItem { tab.label() }
                 .tag(tab.id)
                 .sheet(item: sheetBinding(for: tab.id)) { item in
-                    destination(item.route)
+                    destinationWithTransition(item.route)
                 }
                 .fullScreenCoverIfAvailable(item: fullScreenBinding(for: tab.id)) { item in
-                    destination(item.route)
+                    destinationWithTransition(item.route)
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func destinationWithTransition(_ route: Route) -> some View {
+        #if !os(macOS)
+        switch transitionStyle?(route) ?? .automatic {
+        case .zoom:
+            destination(route)
+                .navigationTransition(.zoom(sourceID: route, in: transitionNamespace))
+        case .slide, .automatic:
+            destination(route)
+        }
+        #else
+        destination(route)
+        #endif
     }
 
     private func selectionBinding() -> Binding<TabID> {
@@ -218,11 +260,13 @@ public extension TabNavigationHost where Destination == AnyView {
     init(
         navigator: TabNavigator<TabID, Route>,
         registry: DestinationRegistry<Route>,
-        tabs: [AnyNavigableTab<TabID>]
+        tabs: [AnyNavigableTab<TabID>],
+        transitionStyle: ((Route) -> BearTransitionStyle)? = nil
     ) {
         self.navigator = navigator
         self.tabs = tabs
         self.destination = { route in registry.view(for: route) }
+        self.transitionStyle = transitionStyle
         precondition(!tabs.isEmpty, "TabNavigationHost requires at least one tab")
         if navigator.state.selectedTab == nil, let first = tabs.first?.id {
             navigator.selectTab(first)
@@ -250,13 +294,16 @@ public extension TabNavigationHost where Destination == AnyView {
 /// }
 /// ```
 public struct SplitNavigationHost<Selection: Hashable & Sendable, Route: Hashable & Sendable, Sidebar: View, Detail: View, Destination: View>: View {
+    @Namespace private var transitionNamespace
     private var navigator: SplitNavigator<Selection, Route>
     private let sidebar: (Binding<Selection?>) -> Sidebar
     private let detail: () -> Detail
     private let destination: (Route) -> Destination
+    private let transitionStyle: ((Route) -> BearTransitionStyle)?
 
     public init(
         navigator: SplitNavigator<Selection, Route>,
+        transitionStyle: ((Route) -> BearTransitionStyle)? = nil,
         @ViewBuilder sidebar: @escaping (Binding<Selection?>) -> Sidebar,
         @ViewBuilder detail: @escaping () -> Detail,
         @ViewBuilder destination: @escaping (Route) -> Destination
@@ -265,25 +312,43 @@ public struct SplitNavigationHost<Selection: Hashable & Sendable, Route: Hashabl
         self.sidebar = sidebar
         self.detail = detail
         self.destination = destination
+        self.transitionStyle = transitionStyle
     }
 
     public var body: some View {
         NavigationSplitView {
             sidebar(selectionBinding())
+                .environment(\.bearTransitionNamespace, transitionNamespace)
         } detail: {
             NavigationStack(path: pathBinding()) {
                 detail()
+                    .environment(\.bearTransitionNamespace, transitionNamespace)
                     .navigationDestination(for: Route.self) { route in
-                        destination(route)
+                        destinationWithTransition(route)
                     }
             }
             .sheet(item: sheetBinding()) { item in
-                destination(item.route)
+                destinationWithTransition(item.route)
             }
             .fullScreenCoverIfAvailable(item: fullScreenBinding()) { item in
-                destination(item.route)
+                destinationWithTransition(item.route)
             }
         }
+    }
+
+    @ViewBuilder
+    private func destinationWithTransition(_ route: Route) -> some View {
+        #if !os(macOS)
+        switch transitionStyle?(route) ?? .automatic {
+        case .zoom:
+            destination(route)
+                .navigationTransition(.zoom(sourceID: route, in: transitionNamespace))
+        case .slide, .automatic:
+            destination(route)
+        }
+        #else
+        destination(route)
+        #endif
     }
 
     private func selectionBinding() -> Binding<Selection?> {
@@ -324,6 +389,7 @@ public extension SplitNavigationHost where Destination == AnyView {
     init(
         navigator: SplitNavigator<Selection, Route>,
         registry: DestinationRegistry<Route>,
+        transitionStyle: ((Route) -> BearTransitionStyle)? = nil,
         @ViewBuilder sidebar: @escaping (Binding<Selection?>) -> Sidebar,
         @ViewBuilder detail: @escaping () -> Detail
     ) {
@@ -331,6 +397,7 @@ public extension SplitNavigationHost where Destination == AnyView {
         self.sidebar = sidebar
         self.detail = detail
         self.destination = { route in registry.view(for: route) }
+        self.transitionStyle = transitionStyle
     }
 }
 #endif
