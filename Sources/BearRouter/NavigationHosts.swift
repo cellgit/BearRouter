@@ -314,6 +314,25 @@ public struct SplitNavigationHost<Selection: Hashable & Sendable, Route: Hashabl
         )
     }
 }
+// MARK: - SplitNavigationHost + DestinationRegistry convenience
+
+public extension SplitNavigationHost where Destination == AnyView {
+    /// Convenience initialiser that accepts a ``DestinationRegistry``.
+    ///
+    /// > Note: This uses `AnyView` internally. Prefer the `@ViewBuilder`
+    /// > destination overload for best performance.
+    init(
+        navigator: SplitNavigator<Selection, Route>,
+        registry: DestinationRegistry<Route>,
+        @ViewBuilder sidebar: @escaping (Binding<Selection?>) -> Sidebar,
+        @ViewBuilder detail: @escaping () -> Detail
+    ) {
+        self.navigator = navigator
+        self.sidebar = sidebar
+        self.detail = detail
+        self.destination = { route in registry.view(for: route) }
+    }
+}
 #endif
 
 // MARK: - Internal helpers
@@ -324,7 +343,7 @@ private extension View {
         item: Binding<Item?>,
         @ViewBuilder content: @escaping (Item) -> Content
     ) -> some View {
-        #if os(iOS) || os(tvOS)
+        #if !os(macOS)
         fullScreenCover(item: item, content: content)
         #else
         self

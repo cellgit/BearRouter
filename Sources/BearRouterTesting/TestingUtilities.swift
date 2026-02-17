@@ -31,14 +31,23 @@ public actor InMemoryNavigationPersistence: NavigationPersistence {
     }
 }
 
+/// Collects navigation log events for test assertions.
+///
+/// Thread-safe: uses `NSLock` to protect the internal events array.
 public final class TestNavigationLogger<Route: Hashable & Sendable>: @unchecked Sendable {
-    public private(set) var events: [NavigationLogEvent<Route>] = []
+    private let lock = NSLock()
+    private var _events: [NavigationLogEvent<Route>] = []
+
+    public var events: [NavigationLogEvent<Route>] {
+        lock.withLock { _events }
+    }
 
     public init() {}
 
     public func logger() -> NavigationLogger<Route> {
         NavigationLogger { [weak self] event in
-            self?.events.append(event)
+            guard let self else { return }
+            self.lock.withLock { self._events.append(event) }
         }
     }
 }

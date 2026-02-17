@@ -192,6 +192,7 @@ public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Se
             tabState.fullScreen = nil
         case .batch(let actions):
             for a in actions { reduce(a, tabID: tabID) }
+            log("[tab:\(tabID)] \(action.description)", tabID: tabID)
             return // batch already sets state per-action
         }
         state.setState(tabState, for: tabID)

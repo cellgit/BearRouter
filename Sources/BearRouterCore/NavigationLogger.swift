@@ -36,5 +36,3 @@ public extension NavigationLogger {
         NavigationLogger { _ in }
     }
 }
-
-
