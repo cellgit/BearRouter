@@ -37,5 +37,4 @@ public extension NavigationLogger {
     }
 }
 
-public typealias ConsoleLogger<Route: Hashable & Sendable> = NavigationLogger<Route>
-public typealias NoOpLogger<Route: Hashable & Sendable> = NavigationLogger<Route>
+

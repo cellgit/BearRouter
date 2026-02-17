@@ -1,13 +1,57 @@
 import Foundation
-import Combine
+import Observation
 
+/// A single-stack navigation state machine.
+///
+/// Use `@State` to own it in a view, or inject via `@Environment`.
+///
+/// ```swift
+/// @State private var navigator = Navigator<Route>()
+///
+/// var body: some View {
+///     @Bindable var nav = navigator
+///     NavigationStack(path: $nav.path) { ... }
+/// }
+/// ```
+@Observable
 @MainActor
-public final class Navigator<Route: Hashable & Sendable>: ObservableObject {
-    @Published public private(set) var state: NavigationState<Route>
+public final class Navigator<Route: Hashable & Sendable> {
+    // MARK: - Observable state
 
-    public var navigationGuard: NavigationGuard<Route>?
-    public var logger: NavigationLogger<Route>
-    public var sceneID: String?
+    /// The canonical navigation state (path + sheet + fullScreen).
+    public private(set) var state: NavigationState<Route>
+
+    // MARK: - Infrastructure (not observed)
+
+    @ObservationIgnored public var navigationGuard: NavigationGuard<Route>?
+    @ObservationIgnored public var logger: NavigationLogger<Route>
+    @ObservationIgnored public var sceneID: String?
+
+    // MARK: - Binding-friendly computed properties
+    //
+    // Use with `@Bindable var nav = navigator`:
+    //   NavigationStack(path: $nav.path)
+    //   .sheet(item: …)
+
+    /// Read/write access to the navigation path. Setting triggers `updatePathFromUI`.
+    public var path: [Route] {
+        get { state.path }
+        set { updatePathFromUI(newValue) }
+    }
+
+    /// Read/write access to the sheet route.
+    public var sheet: Route? {
+        get { state.sheet }
+        set { updateSheetFromUI(newValue) }
+    }
+
+    /// Read/write access to the full-screen cover route.
+    public var fullScreen: Route? {
+        get { state.fullScreen }
+        set { updateFullScreenFromUI(newValue) }
+    }
+
+    // MARK: - Init
 
     public init(
         initialState: NavigationState<Route> = NavigationState(),
@@ -21,9 +65,13 @@ public final class Navigator<Route: Hashable & Sendable>: ObservableObject {
         self.logger = logger
     }
 
+    // MARK: - Action handling
+
     public func handle(_ action: NavigationAction<Route>) async {
         await handle(action, allowGuard: true)
     }
+
+    // MARK: - UI synchronisation callbacks
 
     public func updatePathFromUI(_ path: [Route]) {
         state.path = path
@@ -39,6 +87,8 @@ public final class Navigator<Route: Hashable & Sendable>: ObservableObject {
         state.fullScreen = route
         log("ui.fullScreen(\(String(describing: route)))")
     }
+
+    // MARK: - Snapshot / Restore
 
     public func snapshot() -> NavigationSnapshot<Route> where Route: Codable {
         NavigationSnapshot(state: state, sceneID: sceneID)
@@ -57,13 +107,18 @@ public final class Navigator<Route: Hashable & Sendable>: ObservableObject {
 
     public func restore(key: String, using persistence: NavigationPersistence, coder: SnapshotCoder = SnapshotCoder()) async throws where Route: Codable {
         guard let data = try await persistence.loadData(for: key) else { return }
-        let snapshot = try coder.decode(NavigationSnapshot<Route>.self, from: data)
-        restore(from: snapshot)
+        let snap = try coder.decode(NavigationSnapshot<Route>.self, from: data)
+        restore(from: snap)
     }
+
+    // MARK: - Private
 
     private func handle(_ action: NavigationAction<Route>, allowGuard: Bool) async {
         if allowGuard, let navigationGuard {
-            let decision = await navigationGuard.evaluate(actionDescriptions: action.descriptions, context: GuardContext(state: state, sceneID: sceneID))
+            let decision = await navigationGuard.evaluate(
+                actionDescriptions: action.descriptions,
+                context: GuardContext(state: state, sceneID: sceneID)
+            )
             switch decision {
             case .allow:
                 await handle(action, allowGuard: false)
@@ -91,9 +146,7 @@ public final class Navigator<Route: Hashable & Sendable>: ObservableObject {
         case .push(let route):
             state.path.append(route)
         case .pop:
-            if !state.path.isEmpty {
-                state.path.removeLast()
-            }
+            if !state.path.isEmpty { state.path.removeLast() }
         case .popToRoot:
             state.path.removeAll()
         case .replaceStack(let routes):
@@ -111,9 +164,7 @@ public final class Navigator<Route: Hashable & Sendable>: ObservableObject {
             state.sheet = nil
             state.fullScreen = nil
         case .batch(let actions):
-            for action in actions {
-                reduce(action)
-            }
+            for a in actions { reduce(a) }
         }
         log(action.description)
     }

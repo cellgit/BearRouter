@@ -1,13 +1,39 @@
 import Foundation
-import Combine
+import Observation
 
+/// Per-tab navigation state machine.
+///
+/// Each tab maintains an independent `NavigationState`. The navigator also
+/// tracks which tab is selected.
+///
+/// ```swift
+/// @State private var tabNav = TabNavigator<TabID, Route>()
+/// ```
+@Observable
 @MainActor
-public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Sendable>: ObservableObject {
-    @Published public private(set) var state: TabState<TabID, Route>
+public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Sendable> {
+    // MARK: - Observable state
 
-    public var navigationGuard: NavigationGuard<Route>?
-    public var logger: NavigationLogger<Route>
-    public var sceneID: String?
+    public private(set) var state: TabState<TabID, Route>
+
+    // MARK: - Infrastructure
+
+    @ObservationIgnored public var navigationGuard: NavigationGuard<Route>?
+    @ObservationIgnored public var logger: NavigationLogger<Route>
+    @ObservationIgnored public var sceneID: String?
+
+    // MARK: - Binding-friendly properties
+
+    /// Binding-friendly selected tab.
+    public var selectedTab: TabID? {
+        get { state.selectedTab }
+        set {
+            state.selectedTab = newValue
+            if let newValue { log("selectTab(\(newValue))", tabID: newValue) }
+        }
+    }
+
+    // MARK: - Init
 
     public init(
         initialState: TabState<TabID, Route> = TabState(),
@@ -20,6 +46,8 @@ public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Se
         self.navigationGuard = navigationGuard
         self.logger = logger
     }
+
+    // MARK: - Action handling
 
     public func handle(_ action: TabNavigationAction<TabID, Route>) async {
         switch action {
@@ -38,10 +66,19 @@ public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Se
         }
     }
 
+    // MARK: - Convenience
+
     public func selectTab(_ tabID: TabID) {
         state.selectedTab = tabID
         log("selectTab(\(tabID))", tabID: tabID)
     }
+
+    /// Returns the path for a given tab, usable in `NavigationStack(path:)` bindings.
+    public func path(for tabID: TabID) -> [Route] {
+        state.state(for: tabID).path
+    }
+
+    // MARK: - UI synchronisation
 
     public func updatePathFromUI(_ path: [Route], tabID: TabID) {
         var tabState = state.state(for: tabID)
@@ -64,13 +101,17 @@ public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Se
         log("ui.fullScreen(\(String(describing: route)))", tabID: tabID)
     }
 
+    // MARK: - Snapshot / Restore
+
     public func snapshot() -> TabSnapshot<TabID, Route> where TabID: Codable, Route: Codable {
         let snapshots = state.perTab.mapValues { NavigationSnapshot(state: $0, sceneID: sceneID) }
         return TabSnapshot(selectedTab: state.selectedTab, perTab: snapshots, sceneID: sceneID)
     }
 
     public func restore(from snapshot: TabSnapshot<TabID, Route>) {
-        let restoredStates = snapshot.perTab.mapValues { NavigationState(path: $0.path, sheet: $0.sheet, fullScreen: $0.fullScreen) }
+        let restoredStates = snapshot.perTab.mapValues {
+            NavigationState(path: $0.path, sheet: $0.sheet, fullScreen: $0.fullScreen)
+        }
         state = TabState(selectedTab: snapshot.selectedTab, perTab: restoredStates)
         sceneID = snapshot.sceneID
         log("restore", tabID: state.selectedTab)
@@ -83,8 +124,8 @@ public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Se
 
     public func restore(key: String, using persistence: NavigationPersistence, coder: SnapshotCoder = SnapshotCoder()) async throws where TabID: Codable, Route: Codable {
         guard let data = try await persistence.loadData(for: key) else { return }
-        let snapshot = try coder.decode(TabSnapshot<TabID, Route>.self, from: data)
-        restore(from: snapshot)
+        let snap = try coder.decode(TabSnapshot<TabID, Route>.self, from: data)
+        restore(from: snap)
     }
 
     public func setSelection(from string: String, translator: SelectionTranslator<TabID>) {
@@ -93,10 +134,15 @@ public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Se
         log("selectTab(\(translator.stringify(tab)))", tabID: tab)
     }
 
+    // MARK: - Private
+
     private func handleNavigation(_ action: NavigationAction<Route>, for tabID: TabID, allowGuard: Bool) async {
-        var tabState = state.state(for: tabID)
+        let tabState = state.state(for: tabID)
         if allowGuard, let navigationGuard {
-            let decision = await navigationGuard.evaluate(actionDescriptions: action.descriptions, context: GuardContext(state: tabState, sceneID: sceneID))
+            let decision = await navigationGuard.evaluate(
+                actionDescriptions: action.descriptions,
+                context: GuardContext(state: tabState, sceneID: sceneID)
+            )
             switch decision {
             case .allow:
                 await handleNavigation(action, for: tabID, allowGuard: false)
@@ -104,10 +150,11 @@ public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Se
                 log("deny: \(reason)", tabID: tabID)
                 return
             case .redirect(let path, let replay):
-                tabState.path = path
-                tabState.sheet = nil
-                tabState.fullScreen = nil
-                state.setState(tabState, for: tabID)
+                var ts = tabState
+                ts.path = path
+                ts.sheet = nil
+                ts.fullScreen = nil
+                state.setState(ts, for: tabID)
                 log("redirect -> \(path)", tabID: tabID)
                 if replay {
                     await handleNavigation(action, for: tabID, allowGuard: false)
@@ -126,9 +173,7 @@ public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Se
         case .push(let route):
             tabState.path.append(route)
         case .pop:
-            if !tabState.path.isEmpty {
-                tabState.path.removeLast()
-            }
+            if !tabState.path.isEmpty { tabState.path.removeLast() }
         case .popToRoot:
             tabState.path.removeAll()
         case .replaceStack(let routes):
@@ -146,12 +191,11 @@ public final class TabNavigator<TabID: Hashable & Sendable, Route: Hashable & Se
             tabState.sheet = nil
             tabState.fullScreen = nil
         case .batch(let actions):
-            for action in actions {
-                reduce(action, tabID: tabID)
-            }
+            for a in actions { reduce(a, tabID: tabID) }
+            return // batch already sets state per-action
         }
         state.setState(tabState, for: tabID)
-        log("[tab: \(tabID)] \(action.description)", tabID: tabID)
+        log("[tab:\(tabID)] \(action.description)", tabID: tabID)
     }
 
     private func log(_ description: String, tabID: TabID?) {

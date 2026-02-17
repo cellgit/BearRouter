@@ -1,13 +1,55 @@
 import Foundation
-import Combine
+import Observation
 
+/// NavigationSplitView state machine: sidebar selection + detail navigation stack.
+///
+/// ```swift
+/// @State private var splitNav = SplitNavigator<Category, Route>()
+/// ```
+@Observable
 @MainActor
-public final class SplitNavigator<Selection: Hashable & Sendable, Route: Hashable & Sendable>: ObservableObject {
-    @Published public private(set) var state: SplitState<Selection, Route>
+public final class SplitNavigator<Selection: Hashable & Sendable, Route: Hashable & Sendable> {
+    // MARK: - Observable state
 
-    public var navigationGuard: NavigationGuard<Route>?
-    public var logger: NavigationLogger<Route>
-    public var sceneID: String?
+    public private(set) var state: SplitState<Selection, Route>
+
+    // MARK: - Infrastructure
+
+    @ObservationIgnored public var navigationGuard: NavigationGuard<Route>?
+    @ObservationIgnored public var logger: NavigationLogger<Route>
+    @ObservationIgnored public var sceneID: String?
+
+    // MARK: - Binding-friendly properties
+
+    /// Read/write access to sidebar selection. Use with `@Bindable`:
+    /// `List(items, selection: $nav.selection) { ... }`
+    public var selection: Selection? {
+        get { state.selection }
+        set {
+            state.selection = newValue
+            log("ui.selection(\(String(describing: newValue)))")
+        }
+    }
+
+    /// Read/write access to the detail navigation path.
+    public var detailPath: [Route] {
+        get { state.detail.path }
+        set { updatePathFromUI(newValue) }
+    }
+
+    /// Read/write access to the detail sheet.
+    public var detailSheet: Route? {
+        get { state.detail.sheet }
+        set { updateSheetFromUI(newValue) }
+    }
+
+    /// Read/write access to the detail full-screen cover.
+    public var detailFullScreen: Route? {
+        get { state.detail.fullScreen }
+        set { updateFullScreenFromUI(newValue) }
+    }
+
+    // MARK: - Init
 
     public init(
         initialState: SplitState<Selection, Route> = SplitState(),
@@ -21,11 +63,13 @@ public final class SplitNavigator<Selection: Hashable & Sendable, Route: Hashabl
         self.logger = logger
     }
 
+    // MARK: - Action handling
+
     public func handle(_ action: SplitNavigationAction<Selection, Route>) async {
         switch action {
-        case .setSelection(let selection):
-            state.selection = selection
-            log("setSelection(\(String(describing: selection)))")
+        case .setSelection(let sel):
+            state.selection = sel
+            log("setSelection(\(String(describing: sel)))")
         case .navigateDetail(let navAction):
             await handleDetail(navAction, allowGuard: true)
         case .reset(let newState):
@@ -33,6 +77,8 @@ public final class SplitNavigator<Selection: Hashable & Sendable, Route: Hashabl
             log("reset")
         }
     }
+
+    // MARK: - UI synchronisation
 
     public func updateSelectionFromUI(_ selection: Selection?) {
         state.selection = selection
@@ -59,12 +105,21 @@ public final class SplitNavigator<Selection: Hashable & Sendable, Route: Hashabl
         log("setSelection(\(string))")
     }
 
+    // MARK: - Snapshot / Restore
+
     public func snapshot() -> SplitSnapshot<Selection, Route> where Selection: Codable, Route: Codable {
-        SplitSnapshot(selection: state.selection, detail: NavigationSnapshot(state: state.detail, sceneID: sceneID), sceneID: sceneID)
+        SplitSnapshot(
+            selection: state.selection,
+            detail: NavigationSnapshot(state: state.detail, sceneID: sceneID),
+            sceneID: sceneID
+        )
     }
 
     public func restore(from snapshot: SplitSnapshot<Selection, Route>) {
-        state = SplitState(selection: snapshot.selection, detail: NavigationState(path: snapshot.detail.path, sheet: snapshot.detail.sheet, fullScreen: snapshot.detail.fullScreen))
+        state = SplitState(
+            selection: snapshot.selection,
+            detail: NavigationState(path: snapshot.detail.path, sheet: snapshot.detail.sheet, fullScreen: snapshot.detail.fullScreen)
+        )
         sceneID = snapshot.sceneID
         log("restore")
     }
@@ -76,13 +131,18 @@ public final class SplitNavigator<Selection: Hashable & Sendable, Route: Hashabl
 
     public func restore(key: String, using persistence: NavigationPersistence, coder: SnapshotCoder = SnapshotCoder()) async throws where Selection: Codable, Route: Codable {
         guard let data = try await persistence.loadData(for: key) else { return }
-        let snapshot = try coder.decode(SplitSnapshot<Selection, Route>.self, from: data)
-        restore(from: snapshot)
+        let snap = try coder.decode(SplitSnapshot<Selection, Route>.self, from: data)
+        restore(from: snap)
     }
+
+    // MARK: - Private
 
     private func handleDetail(_ action: NavigationAction<Route>, allowGuard: Bool) async {
         if allowGuard, let navigationGuard {
-            let decision = await navigationGuard.evaluate(actionDescriptions: action.descriptions, context: GuardContext(state: state.detail, sceneID: sceneID))
+            let decision = await navigationGuard.evaluate(
+                actionDescriptions: action.descriptions,
+                context: GuardContext(state: state.detail, sceneID: sceneID)
+            )
             switch decision {
             case .allow:
                 await handleDetail(action, allowGuard: false)
@@ -110,9 +170,7 @@ public final class SplitNavigator<Selection: Hashable & Sendable, Route: Hashabl
         case .push(let route):
             state.detail.path.append(route)
         case .pop:
-            if !state.detail.path.isEmpty {
-                state.detail.path.removeLast()
-            }
+            if !state.detail.path.isEmpty { state.detail.path.removeLast() }
         case .popToRoot:
             state.detail.path.removeAll()
         case .replaceStack(let routes):
@@ -130,9 +188,7 @@ public final class SplitNavigator<Selection: Hashable & Sendable, Route: Hashabl
             state.detail.sheet = nil
             state.detail.fullScreen = nil
         case .batch(let actions):
-            for action in actions {
-                reduce(action)
-            }
+            for a in actions { reduce(a) }
         }
         log(action.description)
     }
