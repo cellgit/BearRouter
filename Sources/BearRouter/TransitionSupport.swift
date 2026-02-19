@@ -130,49 +130,14 @@ public extension View {
 
 // MARK: - Private Modifier Implementations
 
-/// Workaround for SwiftUI framework bug:
-///
-/// `matchedTransitionSource` internally sets the source view's opacity to 0
-/// during a zoom transition. When the user returns via the **system back
-/// button** the opacity is correctly restored to 1. However, when the user
-/// returns via an **interactive gesture** (edge swipe / vertical drag), the
-/// opacity sometimes gets stuck at 0, making the source view invisible.
-///
-/// The fix: when the source view disappears (navigation push), we set
-/// `isActive = false`. When it reappears (navigation pop), SwiftUI renders
-/// the view **without** `matchedTransitionSource` for one frame (clearing
-/// the stuck opacity), then `onAppear` re-enables it asynchronously with a
-/// fresh registration. `.transition(.identity)` ensures no visual flicker
-/// during the branch switch.
-///
-/// > Note: This approach does NOT use `.id()` — that would break `ForEach`
-/// > by collapsing all items into one.
-
 private struct BearTransitionSourceModifier<ID: Hashable>: ViewModifier {
     let id: ID
     @Environment(\.bearTransitionNamespace) private var namespace
 
-    /// When `true` the `matchedTransitionSource` modifier is applied.
-    /// Toggling off → on forces SwiftUI to destroy the old registration
-    /// (with stuck opacity) and create a fresh one.
-    @State private var isActive = true
-
     func body(content: Content) -> some View {
         if let namespace {
-            if isActive {
-                content
-                    .matchedTransitionSource(id: id, in: namespace)
-                    .transition(.identity)
-                    .onDisappear { isActive = false }
-            } else {
-                content
-                    .transition(.identity)
-                    .onAppear {
-                        // Re-register on the next run-loop tick so SwiftUI
-                        // fully tears down the old (stuck) registration first.
-                        DispatchQueue.main.async { isActive = true }
-                    }
-            }
+            content
+                .matchedTransitionSource(id: id, in: namespace)
         } else {
             content
         }
@@ -184,22 +149,10 @@ private struct BearTransitionSourceConfiguredModifier<ID: Hashable, Config: Matc
     let configuration: (EmptyMatchedTransitionSourceConfiguration) -> Config
     @Environment(\.bearTransitionNamespace) private var namespace
 
-    @State private var isActive = true
-
     func body(content: Content) -> some View {
         if let namespace {
-            if isActive {
-                content
-                    .matchedTransitionSource(id: id, in: namespace, configuration: configuration)
-                    .transition(.identity)
-                    .onDisappear { isActive = false }
-            } else {
-                content
-                    .transition(.identity)
-                    .onAppear {
-                        DispatchQueue.main.async { isActive = true }
-                    }
-                }
+            content
+                .matchedTransitionSource(id: id, in: namespace, configuration: configuration)
         } else {
             content
         }
